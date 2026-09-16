@@ -16,6 +16,10 @@ import * as ImagePicker from 'expo-image-picker';
 import { Task } from '../types/task';
 import { getTasks, saveTasks } from '../storage/taskStorage';
 import { syncTask } from '../services/syncService';
+import {
+  requestNotificationPermission,
+  scheduleTaskNotification,
+} from '../services/notificationService';
 
 type Props = {
   onCreated: () => void;
@@ -25,23 +29,15 @@ export default function CreateTaskScreen({
   onCreated,
 }: Props) {
   const [title, setTitle] = useState('');
-  const [description, setDescription] =
-    useState('');
-  const [executionDate, setExecutionDate] =
-    useState('');
-  const [executionTime, setExecutionTime] =
-    useState('');
-  const [address, setAddress] =
-    useState('');
-  const [latitude, setLatitude] =
-    useState('');
-  const [longitude, setLongitude] =
-    useState('');
-  const [imageUri, setImageUri] =
-    useState<string | null>(null);
+  const [description, setDescription] = useState('');
+  const [executionDate, setExecutionDate] = useState('');
+  const [executionTime, setExecutionTime] = useState('');
+  const [address, setAddress] = useState('');
+  const [latitude, setLatitude] = useState('');
+  const [longitude, setLongitude] = useState('');
+  const [imageUri, setImageUri] = useState<string | null>(null);
 
-  const [saving, setSaving] =
-    useState(false);
+  const [saving, setSaving] = useState(false);
 
   const pickImage = async () => {
     const permission =
@@ -63,9 +59,7 @@ export default function CreateTaskScreen({
       });
 
     if (!result.canceled) {
-      setImageUri(
-        result.assets[0].uri
-      );
+      setImageUri(result.assets[0].uri);
     }
   };
 
@@ -177,8 +171,7 @@ export default function CreateTaskScreen({
     try {
       setSaving(true);
 
-      const now =
-        new Date().toISOString();
+      const now = new Date().toISOString();
 
       const taskId =
         `${Date.now()}-${Math.random()
@@ -200,23 +193,17 @@ export default function CreateTaskScreen({
 
         title: title.trim(),
 
-        description:
-          description.trim(),
+        description: description.trim(),
 
-        executionDate:
-          executionDate.trim(),
+        executionDate: executionDate.trim(),
 
-        executionTime:
-          executionTime.trim(),
+        executionTime: executionTime.trim(),
 
-        address:
-          address.trim(),
+        address: address.trim(),
 
-        latitude:
-          parsedLatitude,
+        latitude: parsedLatitude,
 
-        longitude:
-          parsedLongitude,
+        longitude: parsedLongitude,
 
         status: 'new',
 
@@ -239,16 +226,14 @@ export default function CreateTaskScreen({
             id: `${Date.now()}-created`,
             taskId,
             action: 'created',
-            description:
-              'Task created',
+            description: 'Task created',
             timestamp: now,
           },
           {
             id: `${Date.now()}-attachment`,
             taskId,
             action: 'attachment_added',
-            description:
-              'Image attachment added',
+            description: 'Image attachment added',
             timestamp: now,
           },
         ],
@@ -256,12 +241,8 @@ export default function CreateTaskScreen({
         syncStatus: 'pending',
       };
 
-      /*
-       * Save locally first.
-       * This means the app works offline.
-       */
-      const existingTasks =
-        await getTasks();
+      // Save locally first so the app works offline.
+      const existingTasks = await getTasks();
 
       const updatedTasks = [
         ...existingTasks,
@@ -270,32 +251,35 @@ export default function CreateTaskScreen({
 
       await saveTasks(updatedTasks);
 
-      /*
-       * Try to sync with JSON Server.
-       *
-       * syncTask returns the updated Task object
-       * containing remoteId when sync succeeds.
-       */
-      const syncedTask =
-        await syncTask(newTask);
+      // Try to sync with JSON Server.
+      const syncedTask = await syncTask(newTask);
 
-      /*
-       * If sync succeeded, replace the local
-       * task with the returned synced task.
-       *
-       * This is important because the returned task
-       * contains the JSON Server remoteId.
-       */
+      // Schedule local notification.
+      // The notification is scheduled 30 minutes
+      // before the task execution time.
+      const notificationPermission =
+        await requestNotificationPermission();
+
+      if (notificationPermission) {
+        await scheduleTaskNotification(
+          newTask.id,
+          newTask.title,
+          newTask.executionDate,
+          newTask.executionTime
+        );
+      }
+
+      // If sync succeeded, replace the local
+      // task with the synced task.
       if (syncedTask) {
-        const currentTasks =
-          await getTasks();
+        const currentTasks = await getTasks();
 
-        const syncedTasks =
-          currentTasks.map(task =>
+        const syncedTasks = currentTasks.map(
+          task =>
             task.id === newTask.id
               ? syncedTask
               : task
-          );
+        );
 
         await saveTasks(syncedTasks);
       }
@@ -333,13 +317,9 @@ export default function CreateTaskScreen({
       }
     >
       <ScrollView
-        contentContainerStyle={
-          styles.content
-        }
+        contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={
-          false
-        }
+        showsVerticalScrollIndicator={false}
       >
         <Text style={styles.title}>
           Create Task
@@ -398,9 +378,7 @@ export default function CreateTaskScreen({
               placeholder="2026-09-20"
               placeholderTextColor="#9CA3AF"
               value={executionDate}
-              onChangeText={
-                setExecutionDate
-              }
+              onChangeText={setExecutionDate}
               keyboardType="numbers-and-punctuation"
             />
           </View>
@@ -420,9 +398,7 @@ export default function CreateTaskScreen({
               placeholder="14:30"
               placeholderTextColor="#9CA3AF"
               value={executionTime}
-              onChangeText={
-                setExecutionTime
-              }
+              onChangeText={setExecutionTime}
               keyboardType="numbers-and-punctuation"
             />
           </View>
@@ -482,9 +458,7 @@ export default function CreateTaskScreen({
               placeholder="69.2797"
               placeholderTextColor="#9CA3AF"
               value={longitude}
-              onChangeText={
-                setLongitude
-              }
+              onChangeText={setLongitude}
               keyboardType="numbers-and-punctuation"
             />
           </View>
@@ -498,9 +472,7 @@ export default function CreateTaskScreen({
           {imageUri ? (
             <View style={styles.imageContainer}>
               <Image
-                source={{
-                  uri: imageUri,
-                }}
+                source={{ uri: imageUri }}
                 style={styles.image}
               />
 
@@ -511,9 +483,7 @@ export default function CreateTaskScreen({
                 }
               >
                 <Text
-                  style={
-                    styles.removeButtonText
-                  }
+                  style={styles.removeButtonText}
                 >
                   Remove
                 </Text>
@@ -524,24 +494,18 @@ export default function CreateTaskScreen({
               style={styles.imagePicker}
               onPress={pickImage}
             >
-              <Text
-                style={styles.imageIcon}
-              >
+              <Text style={styles.imageIcon}>
                 📷
               </Text>
 
               <Text
-                style={
-                  styles.imagePickerTitle
-                }
+                style={styles.imagePickerTitle}
               >
                 Add Image
               </Text>
 
               <Text
-                style={
-                  styles.imagePickerText
-                }
+                style={styles.imagePickerText}
               >
                 At least one image is required
               </Text>
